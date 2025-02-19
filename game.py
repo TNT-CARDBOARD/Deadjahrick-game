@@ -2,6 +2,7 @@ import os
 import re
 import math
 import sys
+import random
 
 # Параметры отображения: размеры блока клетки
 CELL_WIDTH = 10    # ширина блока в символах
@@ -348,9 +349,9 @@ def soldier_knockback_attack(attacker, defender, defender_cell):
     print(f"{attacker.tclass} использует отбрасывающую атаку!")
     result = knight_special_attack(attacker, defender, allow_counterattack=False)
     if result == "defender_dead":
-        # Попытаемся отбросить врага: ищем пустую соседнюю клетку
+        # Попытаемся отбросить врага: ищем пустую соседнюю клетку для врага
         enemy_cell = None
-        for nbr in neighbors_map.get(defender_cell, []):
+        for nbr in neighbors_map.get(defender_cell, []):  # defender_cell – клетка, где стоял враг
             if board.get(nbr) is None:
                 enemy_cell = nbr
                 break
@@ -359,6 +360,9 @@ def soldier_knockback_attack(attacker, defender, defender_cell):
             board[enemy_cell] = defender
             board[defender_cell] = None
         return result
+    # Независимо от результата, устанавливаем cooldown
+    attacker.knockback_cooldown = 7
+    return result
     # Устанавливаем cooldown
     attacker.knockback_cooldown = 7
     return result
@@ -436,13 +440,19 @@ board["N"] = Token('R', "Archer", 4, 7, 1)
 
 # Функция получения доступных клеток для перемещения для токена,
 # с учётом возможности пойти на клетку с врагом, если можно его убить
+# Функция получения доступных клеток для перемещения для токена,
+# с учётом возможности пойти на клетку с врагом, если можно его убить
+# Для солдата с готовой способностью knockback (knockback_cooldown == 0) добавляем вражеские клетки независимо от can_kill.
 def get_available_moves(cell_label, token):
     empty_moves = [nbr for nbr in neighbors_map.get(cell_label, []) if board.get(nbr) is None]
     enemy_moves = []
     for nbr in neighbors_map.get(cell_label, []):
         if board.get(nbr) is not None and board[nbr].side != token.side:
-            if can_kill(token, board[nbr]):
+            if token.tclass == "Soldier" and token.knockback_cooldown == 0:
                 enemy_moves.append(nbr)
+            else:
+                if can_kill(token, board[nbr]):
+                    enemy_moves.append(nbr)
     return empty_moves + enemy_moves
 
 # Обновление заморозки и cooldown'ов для солдат
@@ -458,23 +468,33 @@ def update_cooldowns():
                     token.shield_repair_cooldown -= 1
 
 # Функция для специального отбрасывающего удара солдата
-def soldier_knockback_attack(attacker, defender, defender_cell):
+def soldier_knockback_attack(attacker, defender, attacker_cell, defender_cell):
     print(f"{attacker.tclass} использует отбрасывающую атаку!")
-    # Используем специальный удар рыцаря как основу (2x damage, без контратак)
-    result = knight_special_attack(attacker, defender, allow_counterattack=False)
-    if result == "defender_dead":
-        # Если враг не погиб, пытаемся отбросить его в соседнюю пустую клетку
-        empty_neighbors = [nbr for nbr in neighbors_map.get(defender_cell, []) if board.get(nbr) is None]
-        if empty_neighbors:
-            # Можно выбрать первую пустую клетку (или добавить выбор)
-            new_cell = empty_neighbors[0]
-            print(f"Враг отбит на клетку {new_cell}.")
-            board[new_cell] = defender
-            board[defender_cell] = None
-        else:
-            print("Нет свободной клетки для отбрасывания врага.")
+    # Удаляем атакующего солдата с его исходной клетки, чтобы избежать клонирования
+    board[attacker_cell] = None
+    # Солдат наносит ровно 2 единицы урона
+    damage = 2
+    defender.hp -= damage
+    print(f"{attacker.tclass} наносит 2 урона {defender.tclass}.")
+    if defender.hp <= 0:
+        print(f"{defender.tclass} побеждён!")
+        # Перемещаем солдата на клетку противника
+        board[defender_cell] = attacker
+        attacker.knockback_cooldown = 7
+        return "defender_dead"
+    # Если враг жив, пытаемся отбросить его: ищем пустую соседнюю клетку для врага
+    empty_neighbors = [nbr for nbr in neighbors_map.get(defender_cell, []) if board.get(nbr) is None]
+    if empty_neighbors:
+        new_cell = random.choice(empty_neighbors)
+        print(f"Враг отбит на клетку {new_cell}.")
+        board[new_cell] = defender
+        board[defender_cell] = None
+    else:
+        print("Нет свободной клетки для отбрасывания врага, враг остается на месте.")
+    # Затем солдат занимает клетку, где стоял враг
+    board[defender_cell] = attacker
     attacker.knockback_cooldown = 7
-    return result
+    return "both_alive"
 
 # Функция ремонта щита для солдата (25% от max_defense, но не выше max_defense)
 def repair_shield(token):
@@ -659,11 +679,8 @@ def main():
                     battle_options = ["Обычный бой", "Отбрасывающая атака"]
                     battle_choice = choose_option("Выберите тип атаки: ", battle_options)
                     if "Отбрасывающая" in battle_choice:
-                        # Выполняем отбрасывающую атаку
-                        print("Выполняется отбрасывающая атака.")
-                        # Запоминаем клетку, на которой стоял враг
                         defender_cell = destination
-                        result = soldier_knockback_attack(moving_token, board[destination], defender_cell)
+                        result = soldier_knockback_attack(moving_token, board[destination], chosen_cell, destination)
                         if result == "defender_dead":
                             board[destination] = moving_token
                         elif result == "attacker_dead":
@@ -676,16 +693,7 @@ def main():
                         elif result == "attacker_dead":
                             board[chosen_cell] = None
                             destination = None
-                else:
-                    print(f"\nВы выбрали перейти на клетку {destination} с вражеским токеном. Инициируется бой:")
-                    result = combat(moving_token, board[destination])
-                    if result == "defender_dead":
-                        board[destination] = moving_token
-                        print(f"{moving_token.tclass} занимает клетку {destination}.")
-                    elif result == "attacker_dead":
-                        board[chosen_cell] = None
-                        print(f"{moving_token.tclass} погибает в бою.")
-                        destination = None
+
             else:
                 board[chosen_cell] = None
                 board[destination] = moving_token
