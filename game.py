@@ -67,25 +67,25 @@ FIELD = r"""
 ........................................####################........................................
 """
 
-# Разбиваем поле на строки и выравниваем их по ширине
+# Подготовка поля
 FIELD_LINES = [line for line in FIELD.splitlines() if line.strip() != ""]
 max_width = max(len(line) for line in FIELD_LINES)
 canvas_original = [list(line.ljust(max_width)) for line in FIELD_LINES]
 CANVAS_HEIGHT = len(canvas_original)
 CANVAS_WIDTH = len(canvas_original[0]) if canvas_original else 0
 
-# Парсим разрешённые клетки: ищем вхождения вида "@<символ>"
-allowed_cells = {}  # ключ: метка (строка), значение: (row, col)
+# Разрешённые клетки
+allowed_cells = {}
 for r, line in enumerate(FIELD_LINES):
     for m in re.finditer(r'@([0-9A-Z])', line):
         label = m.group(1)
         c = m.start()
         allowed_cells[label] = (r, c)
 
-# Игровой стол: ключ – метка клетки, значение – токен или None
+# Игровой стол
 board = {label: None for label in allowed_cells}
 
-# Жёстко заданный словарь соседей (куда можно переместиться/атаковать)
+# Соседи
 neighbors_map = {
     '0': ['A', 'B', 'F', 'G', 'H', '5', '6', '7', '8', 'J', 'I', 'E'],
     '1': ['2', '5', '6', '3', '7'],
@@ -114,7 +114,7 @@ neighbors_map = {
     'O': ['N', 'H', 'I', 'J', 'K']
 }
 
-# ASCII‑арт токенов (улучшенные рисунки)
+# ASCII‑арт токенов
 def get_soldier_art():
     return [
         "..//\\.╋.",
@@ -146,7 +146,7 @@ token_arts = {
     "Mage": get_mage_art()
 }
 
-# Функция для проверки, сможет ли attacker убить defender (без контратак)
+# Проверка убийства
 def can_kill(attacker, defender):
     if attacker.attack > defender.defense:
         potential = attacker.attack - defender.defense
@@ -154,8 +154,7 @@ def can_kill(attacker, defender):
         potential = attacker.attack // 2
     return potential >= defender.hp
 
-# Класс токена с добавлением max_hp, cooldown, frozen, knockback_cooldown и shield_repair_cooldown для солдата,
-# а также специального флага для рыцаря (special_used)
+# Класс токена
 class Token:
     def __init__(self, side, tclass, hp, attack, defense):
         self.side = side
@@ -174,9 +173,9 @@ class Token:
         else:
             self.special_used = None
         if tclass == "Soldier":
-            self.knockback_cooldown = 0  # Способность отбрасывания доступна, если 0
-            self.shield_repair_cooldown = 0  # Способность ремонта щита доступна, если 0
-            self.max_defense = defense  # Максимальный щит (не может быть восстановлен выше него)
+            self.knockback_cooldown = 0
+            self.shield_repair_cooldown = 0
+            self.max_defense = defense
         else:
             self.knockback_cooldown = None
             self.shield_repair_cooldown = None
@@ -184,7 +183,7 @@ class Token:
     def __str__(self):
         return f"{self.tclass} (H:{self.hp} A:{self.attack} D:{self.defense})"
 
-# Формирование блока для токена (ASCII‑арт + статы)
+# Блок для отображения токена
 def token_block(token, spaced=True):
     block = []
     art = token_arts[token.tclass]
@@ -207,7 +206,7 @@ def token_block(token, spaced=True):
         block.append(stats)
     return block
 
-# Наложение блока токена на canvas: нижняя центральная точка блока совпадает с координатой клетки
+# Наложение блока токена
 def overlay_token(canvas, cell_label, block):
     r_anchor, c_anchor = allowed_cells[cell_label]
     top = r_anchor - (CELL_HEIGHT - 1)
@@ -219,10 +218,10 @@ def overlay_token(canvas, cell_label, block):
             if 0 <= y < CANVAS_HEIGHT and 0 <= x < CANVAS_WIDTH:
                 canvas[y][x] = ch
 
-# Отрисовка поля: если клетка пуста, выводим её метку (отцентрированную в блоке)
+# Отрисовка поля
 def print_board():
     canvas = [row[:] for row in canvas_original]
-    LABEL_WIDTH = 5  # отступы по 2 символа с каждой стороны для меток клеток
+    LABEL_WIDTH = 5
     for cell_label, coord in allowed_cells.items():
         if board.get(cell_label) is None:
             r_anchor, c_anchor = coord
@@ -235,7 +234,6 @@ def print_board():
                 x = label_left + i
                 if 0 <= y < CANVAS_HEIGHT and 0 <= x < CANVAS_WIDTH:
                     canvas[y][x] = ch
-    # Наложение персонажей без пробелов
     for cell_label, token in board.items():
         if token is not None:
             block = token_block(token, spaced=False)
@@ -244,7 +242,7 @@ def print_board():
     for line in canvas:
         print("".join(line))
 
-# Функция выбора варианта из списка с возможностью завершить игру
+# Выбор варианта
 def choose_option(prompt, options):
     if not options:
         return None
@@ -265,7 +263,7 @@ def choose_option(prompt, options):
         except ValueError:
             print("Введите число, соответствующее номеру.")
 
-# Функция вычисления расширённых целей атаки:
+# Расширенные цели атаки
 def extended_targets(source_label):
     ext = set(neighbors_map.get(source_label, []))
     for nbr in neighbors_map.get(source_label, []):
@@ -273,7 +271,7 @@ def extended_targets(source_label):
     ext.add(source_label)
     return list(ext)
 
-# Функция для расширённой атаки мага (для Archer аналогична)
+# Функция для расширённой атаки мага (для Archer будет отдельная)
 def extended_attack(attacker, source_label, current_turn):
     targets = extended_targets(source_label)
     enemy_targets = [t for t in targets if board.get(t) is not None and board[t].side != current_turn]
@@ -310,7 +308,71 @@ def extended_attack(attacker, source_label, current_turn):
             elif result == "attacker_dead":
                 board[source_label] = None
 
-# Функция специального удара для рыцаря (2x damage), используется один раз за игру
+# Функция меню для атаки мага
+def mage_attack_menu(attacker, source_label, current_turn):
+    print("\nВарианты атаки мага:")
+    options = ["Огненный шар", "Заморозка"]
+    if attacker.cooldown == 0:
+        options.append("Хилл")
+    else:
+        options.append(f"Хилл (не доступен, {attacker.cooldown} ход(ов) до восстановления)")
+    mage_choice = choose_option("Выберите действие мага: ", options)
+    if "Огненный шар" in mage_choice:
+        print("Вы выбрали Огненный шар.")
+        extended_attack(attacker, source_label, current_turn)
+    elif "Заморозка" in mage_choice:
+        print("Вы выбрали Заморозку.")
+        targets = extended_targets(source_label)
+        enemy_targets = [t for t in targets if board.get(t) is not None and board[t].side != current_turn]
+        if enemy_targets:
+            print("\nДоступные цели для заморозки:")
+            enemy_options = [f"{board[t].tclass} на клетке {t} (H:{board[t].hp})" for t in enemy_targets]
+            target = choose_option("Выберите клетку для заморозки: ", enemy_options)
+            target_label = None
+            for t, opt in zip(enemy_targets, enemy_options):
+                if opt == target:
+                    target_label = t
+                    break
+            print(f"{board[target_label].tclass} на клетке {target_label} заморожен на 1 ход!")
+            board[target_label].frozen = 1
+        else:
+            print("Нет доступных целей для заморозки.")
+    elif "Хилл" in mage_choice:
+        if attacker.cooldown == 0:
+            allies = [(cell, token) for cell, token in board.items() 
+                      if token is not None and token.side == current_turn and token.hp < token.max_hp]
+            if allies:
+                print("Доступные союзники для лечения (если не выбрать, лечится маг):")
+                ally_options = [f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})" for cell, token in allies]
+                ally_choice = choose_option("Выберите союзника для лечения: ", ally_options)
+                target_cell = None
+                for cell, token in allies:
+                    option_str = f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})"
+                    if option_str == ally_choice:
+                        target_cell = cell
+                        break
+                if target_cell:
+                    print(f"{attacker.tclass} лечит союзника на клетке {target_cell} на 2 HP.")
+                    board[target_cell].hp = min(board[target_cell].hp + 2, board[target_cell].max_hp)
+                else:
+                    print("Союзник не выбран. Лечится маг.")
+                    attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            else:
+                print("Нет союзников, нуждающихся в лечении. Лечится маг.")
+                attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            attacker.cooldown = 5
+        else:
+            print("Хилл недоступен.")
+    if attacker.cooldown is not None and attacker.cooldown > 0:
+        attacker.cooldown -= 1
+
+# Новая функция меню для атаки лучника (отдельная от мага)
+def archer_attack_menu(attacker, source_label, current_turn):
+    print("\nЛучник использует расширенную атаку (Огненный шар).")
+    # Здесь можно добавить дополнительные опции, если нужно, но пока просто вызываем стандартную расширенную атаку
+    extended_attack(attacker, source_label, current_turn)
+
+# Функция специального удара для рыцаря (2x damage)
 def knight_special_attack(attacker, defender, allow_counterattack=True):
     special_attack_value = 2 * attacker.attack
     raw_dmg = special_attack_value - defender.defense
@@ -318,6 +380,7 @@ def knight_special_attack(attacker, defender, allow_counterattack=True):
         dmg = raw_dmg
         print(f"{attacker.tclass} (спец. удар) наносит {dmg} урона {defender.tclass} (щит пробит).")
         defender.hp -= dmg
+        defender.defense = 0
         if defender.hp <= 0:
             print(f"{defender.tclass} побеждён!")
             return "defender_dead"
@@ -344,40 +407,35 @@ def knight_special_attack(attacker, defender, allow_counterattack=True):
                 return "attacker_dead"
         return "both_alive"
 
-# Функция специального отбрасывающего удара для солдата (2x damage и отбрасывание в соседнюю пустую клетку)
-def soldier_knockback_attack(attacker, defender, defender_cell):
+# Функция специального отбрасывающего удара для солдата
+def soldier_knockback_attack(attacker, defender, attacker_cell, defender_cell):
     print(f"{attacker.tclass} использует отбрасывающую атаку!")
-    result = knight_special_attack(attacker, defender, allow_counterattack=False)
-    if result == "defender_dead":
-        # Попытаемся отбросить врага: ищем пустую соседнюю клетку для врага
-        enemy_cell = None
-        for nbr in neighbors_map.get(defender_cell, []):  # defender_cell – клетка, где стоял враг
-            if board.get(nbr) is None:
-                enemy_cell = nbr
-                break
-        if enemy_cell:
-            print(f"Враг отбит на клетку {enemy_cell}.")
-            board[enemy_cell] = defender
-            board[defender_cell] = None
-        return result
-    # Независимо от результата, устанавливаем cooldown
+    board[attacker_cell] = None
+    damage = 2
+    defender.hp -= damage
+    print(f"{attacker.tclass} наносит 2 урона {defender.tclass}.")
+    if defender.hp <= 0:
+        print(f"{defender.tclass} побеждён!")
+        board[defender_cell] = attacker
+        attacker.knockback_cooldown = 7
+        return "defender_dead"
+    empty_neighbors = [nbr for nbr in neighbors_map.get(defender_cell, []) if board.get(nbr) is None]
+    if empty_neighbors:
+        new_cell = random.choice(empty_neighbors)
+        print(f"Враг отбит на клетку {new_cell}.")
+        board[new_cell] = defender
+        board[defender_cell] = None
+    else:
+        print("Нет свободной клетки для отбрасывания врага, враг остается на месте.")
+    board[defender_cell] = attacker
     attacker.knockback_cooldown = 7
-    return result
-    # Устанавливаем cooldown
-    attacker.knockback_cooldown = 7
-    return result
+    return "both_alive"
 
-    # Независимо от результата, устанавливаем cooldown
-    attacker.knockback_cooldown = 7
-    return result
-
-# Функция применения урона с учётом разрушаемого щита
+# Функция применения урона с учётом щита
 def apply_damage(target, damage):
     if damage <= target.defense:
         reduction = damage // 2
-        target.defense -= reduction
-        if target.defense < 0:
-            target.defense = 0
+        target.defense = max(target.defense - reduction, 0)
         print(f"Щит {target.tclass} уменьшен на {reduction} (новый щит: {target.defense}).")
     else:
         remainder = damage - target.defense
@@ -392,6 +450,7 @@ def combat(attacker, defender, allow_counterattack=True):
         dmg = raw_dmg
         print(f"{attacker.tclass} наносит {dmg} урона {defender.tclass} (щит пробит).")
         defender.hp -= dmg
+        defender.defense = 0
         if defender.hp <= 0:
             print(f"{defender.tclass} побеждён!")
             return "defender_dead"
@@ -418,31 +477,16 @@ def combat(attacker, defender, allow_counterattack=True):
     return "both_alive"
 
 # Инициализация токенов
-# Для команды Blue:
-#   Soldier на "3": HP=10, ATK=5, DEF=4 (увеличим DEF для демонстрации ремонта)
-#   Mage на "4": HP=6, ATK=6, DEF=2
-#   Knight на "C": HP=5, ATK=4, DEF=8
-#   Archer на "2": HP=4, ATK=7, DEF=1
 board["3"] = Token('B', "Soldier", 10, 5, 4)
 board["4"] = Token('B', "Mage", 6, 6, 2)
 board["C"] = Token('B', "Knight", 5, 4, 8)
 board["2"] = Token('B', "Archer", 4, 7, 1)
-
-# Для команды Red:
-#   Soldier на "L": HP=10, ATK=5, DEF=4
-#   Mage на "O": HP=6, ATK=6, DEF=2
-#   Knight на "K": HP=5, ATK=4, DEF=8
-#   Archer на "N": HP=4, ATK=7, DEF=1
 board["L"] = Token('R', "Soldier", 10, 5, 4)
 board["O"] = Token('R', "Mage", 6, 6, 2)
 board["K"] = Token('R', "Knight", 5, 4, 8)
 board["N"] = Token('R', "Archer", 4, 7, 1)
 
-# Функция получения доступных клеток для перемещения для токена,
-# с учётом возможности пойти на клетку с врагом, если можно его убить
-# Функция получения доступных клеток для перемещения для токена,
-# с учётом возможности пойти на клетку с врагом, если можно его убить
-# Для солдата с готовой способностью knockback (knockback_cooldown == 0) добавляем вражеские клетки независимо от can_kill.
+# Функция получения доступных клеток для перемещения для токена
 def get_available_moves(cell_label, token):
     empty_moves = [nbr for nbr in neighbors_map.get(cell_label, []) if board.get(nbr) is None]
     enemy_moves = []
@@ -455,6 +499,426 @@ def get_available_moves(cell_label, token):
                     enemy_moves.append(nbr)
     return empty_moves + enemy_moves
 
+# Обновление заморозки и cooldown'ов для солдат
+def update_cooldowns():
+    for token in board.values():
+        if token is not None:
+            if token.frozen > 0:
+                token.frozen -= 1
+            if token.tclass == "Soldier":
+                if token.knockback_cooldown > 0:
+                    token.knockback_cooldown -= 1
+                if token.shield_repair_cooldown > 0:
+                    token.shield_repair_cooldown -= 1
+
+# Функция меню для атаки мага
+def mage_attack_menu(attacker, source_label, current_turn):
+    print("\nВарианты атаки мага:")
+    options = ["Огненный шар", "Заморозка"]
+    if attacker.cooldown == 0:
+        options.append("Хилл")
+    else:
+        options.append(f"Хилл (не доступен, {attacker.cooldown} ход(ов) до восстановления)")
+    mage_choice = choose_option("Выберите действие мага: ", options)
+    if "Огненный шар" in mage_choice:
+        print("Вы выбрали Огненный шар.")
+        extended_attack(attacker, source_label, current_turn)
+    elif "Заморозка" in mage_choice:
+        print("Вы выбрали Заморозку.")
+        targets = extended_targets(source_label)
+        enemy_targets = [t for t in targets if board.get(t) is not None and board[t].side != current_turn]
+        if enemy_targets:
+            print("\nДоступные цели для заморозки:")
+            enemy_options = [f"{board[t].tclass} на клетке {t} (H:{board[t].hp})" for t in enemy_targets]
+            target = choose_option("Выберите клетку для заморозки: ", enemy_options)
+            target_label = None
+            for t, opt in zip(enemy_targets, enemy_options):
+                if opt == target:
+                    target_label = t
+                    break
+            print(f"{board[target_label].tclass} на клетке {target_label} заморожен на 1 ход!")
+            board[target_label].frozen = 1
+        else:
+            print("Нет доступных целей для заморозки.")
+    elif "Хилл" in mage_choice:
+        if attacker.cooldown == 0:
+            allies = [(cell, token) for cell, token in board.items() 
+                      if token is not None and token.side == current_turn and token.hp < token.max_hp]
+            if allies:
+                print("Доступные союзники для лечения (если не выбрать, лечится маг):")
+                ally_options = [f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})" for cell, token in allies]
+                ally_choice = choose_option("Выберите союзника для лечения: ", ally_options)
+                target_cell = None
+                for cell, token in allies:
+                    option_str = f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})"
+                    if option_str == ally_choice:
+                        target_cell = cell
+                        break
+                if target_cell:
+                    print(f"{attacker.tclass} лечит союзника на клетке {target_cell} на 2 HP.")
+                    board[target_cell].hp = min(board[target_cell].hp + 2, board[target_cell].max_hp)
+                else:
+                    print("Союзник не выбран. Лечится маг.")
+                    attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            else:
+                print("Нет союзников, нуждающихся в лечении. Лечится маг.")
+                attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            attacker.cooldown = 5
+        else:
+            print("Хилл недоступен.")
+    if attacker.cooldown is not None and attacker.cooldown > 0:
+        attacker.cooldown -= 1
+
+# Новая функция меню для атаки лучника (отдельная от мага)
+def archer_attack_menu(attacker, source_label, current_turn):
+    print("\nЛучник использует расширенную атаку (Огненный шар).")
+    extended_attack(attacker, source_label, current_turn)
+
+# Функция специального удара для рыцаря (2x damage)
+def knight_special_attack(attacker, defender, allow_counterattack=True):
+    special_attack_value = 2 * attacker.attack
+    raw_dmg = special_attack_value - defender.defense
+    if raw_dmg > 0:
+        dmg = raw_dmg
+        print(f"{attacker.tclass} (спец. удар) наносит {dmg} урона {defender.tclass} (щит пробит).")
+        defender.hp -= dmg
+        defender.defense = 0
+        if defender.hp <= 0:
+            print(f"{defender.tclass} побеждён!")
+            return "defender_dead"
+        if allow_counterattack:
+            counter = max(defender.attack - attacker.defense, 0)
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+    else:
+        special_dmg = special_attack_value // 2
+        print(f"{attacker.tclass} (спец. удар) пробивает щит {defender.tclass} и наносит {special_dmg} повреждений щиту.")
+        defender.defense -= special_dmg
+        if defender.defense < 0:
+            defender.defense = 0
+        if allow_counterattack:
+            counter = defender.attack // 2
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+
+# Функция специального отбрасывающего удара для солдата
+def soldier_knockback_attack(attacker, defender, attacker_cell, defender_cell):
+    print(f"{attacker.tclass} использует отбрасывающую атаку!")
+    board[attacker_cell] = None
+    damage = 2
+    defender.hp -= damage
+    print(f"{attacker.tclass} наносит 2 урона {defender.tclass}.")
+    if defender.hp <= 0:
+        print(f"{defender.tclass} побеждён!")
+        board[defender_cell] = attacker
+        attacker.knockback_cooldown = 7
+        return "defender_dead"
+    empty_neighbors = [nbr for nbr in neighbors_map.get(defender_cell, []) if board.get(nbr) is None]
+    if empty_neighbors:
+        new_cell = random.choice(empty_neighbors)
+        print(f"Враг отбит на клетку {new_cell}.")
+        board[new_cell] = defender
+        board[defender_cell] = None
+    else:
+        print("Нет свободной клетки для отбрасывания врага, враг остается на месте.")
+    board[defender_cell] = attacker
+    attacker.knockback_cooldown = 7
+    return "both_alive"
+
+# Функция ремонта щита для солдата (25% от max_defense)
+def repair_shield(token):
+    repair_amount = max(1, int(0.25 * token.max_defense))
+    new_def = min(token.defense + repair_amount, token.max_defense)
+    print(f"{token.tclass} ремонтирует щит: {token.defense} -> {new_def}.")
+    token.defense = new_def
+    token.shield_repair_cooldown = 6
+
+# Функция применения урона с учетом щита
+def apply_damage(target, damage):
+    if damage <= target.defense:
+        reduction = damage // 2
+        target.defense = max(target.defense - reduction, 0)
+        print(f"Щит {target.tclass} уменьшен на {reduction} (новый щит: {target.defense}).")
+    else:
+        remainder = damage - target.defense
+        print(f"Щит {target.tclass} пробит (щит: {target.defense}), остаток урона: {remainder}.")
+        target.defense = 0
+        target.hp -= remainder
+
+# Функция стандартного combat с учетом щита
+def combat(attacker, defender, allow_counterattack=True):
+    raw_dmg = attacker.attack - defender.defense
+    if raw_dmg > 0:
+        dmg = raw_dmg
+        print(f"{attacker.tclass} наносит {dmg} урона {defender.tclass} (щит пробит).")
+        defender.hp -= dmg
+        defender.defense = 0
+        if defender.hp <= 0:
+            print(f"{defender.tclass} побеждён!")
+            return "defender_dead"
+        if allow_counterattack:
+            counter = max(defender.attack - attacker.defense, 0)
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+    special_dmg = attacker.attack // 2
+    print(f"{attacker.tclass} пробивает щит {defender.tclass} и наносит {special_dmg} повреждений щиту.")
+    defender.defense -= special_dmg
+    if defender.defense < 0:
+        defender.defense = 0
+    if allow_counterattack:
+        counter = defender.attack // 2
+        print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+        apply_damage(attacker, counter)
+        if attacker.hp <= 0:
+            print(f"{attacker.tclass} побеждён в контратаке!")
+            return "attacker_dead"
+    return "both_alive"
+
+# Инициализация токенов
+board["3"] = Token('B', "Soldier", 10, 5, 4)
+board["4"] = Token('B', "Mage", 6, 6, 2)
+board["C"] = Token('B', "Knight", 5, 4, 8)
+board["2"] = Token('B', "Archer", 4, 7, 1)
+board["L"] = Token('R', "Soldier", 10, 5, 4)
+board["O"] = Token('R', "Mage", 6, 6, 2)
+board["K"] = Token('R', "Knight", 5, 4, 8)
+board["N"] = Token('R', "Archer", 4, 7, 1)
+
+# Функция получения доступных клеток для перемещения для токена
+def get_available_moves(cell_label, token):
+    empty_moves = [nbr for nbr in neighbors_map.get(cell_label, []) if board.get(nbr) is None]
+    enemy_moves = []
+    for nbr in neighbors_map.get(cell_label, []):
+        if board.get(nbr) is not None and board[nbr].side != token.side:
+            if token.tclass == "Soldier" and token.knockback_cooldown == 0:
+                enemy_moves.append(nbr)
+            else:
+                if can_kill(token, board[nbr]):
+                    enemy_moves.append(nbr)
+    return empty_moves + enemy_moves
+
+# Обновление заморозки и cooldown'ов для солдат
+def update_cooldowns():
+    for token in board.values():
+        if token is not None:
+            if token.frozen > 0:
+                token.frozen -= 1
+            if token.tclass == "Soldier":
+                if token.knockback_cooldown > 0:
+                    token.knockback_cooldown -= 1
+                if token.shield_repair_cooldown > 0:
+                    token.shield_repair_cooldown -= 1
+
+# Функция меню для атаки мага
+def mage_attack_menu(attacker, source_label, current_turn):
+    print("\nВарианты атаки мага:")
+    options = ["Огненный шар", "Заморозка"]
+    if attacker.cooldown == 0:
+        options.append("Хилл")
+    else:
+        options.append(f"Хилл (не доступен, {attacker.cooldown} ход(ов) до восстановления)")
+    mage_choice = choose_option("Выберите действие мага: ", options)
+    if "Огненный шар" in mage_choice:
+        print("Вы выбрали Огненный шар.")
+        extended_attack(attacker, source_label, current_turn)
+    elif "Заморозка" in mage_choice:
+        print("Вы выбрали Заморозку.")
+        targets = extended_targets(source_label)
+        enemy_targets = [t for t in targets if board.get(t) is not None and board[t].side != current_turn]
+        if enemy_targets:
+            print("\nДоступные цели для заморозки:")
+            enemy_options = [f"{board[t].tclass} на клетке {t} (H:{board[t].hp})" for t in enemy_targets]
+            target = choose_option("Выберите клетку для заморозки: ", enemy_options)
+            target_label = None
+            for t, opt in zip(enemy_targets, enemy_options):
+                if opt == target:
+                    target_label = t
+                    break
+            print(f"{board[target_label].tclass} на клетке {target_label} заморожен на 1 ход!")
+            board[target_label].frozen = 1
+        else:
+            print("Нет доступных целей для заморозки.")
+    elif "Хилл" in mage_choice:
+        if attacker.cooldown == 0:
+            allies = [(cell, token) for cell, token in board.items() 
+                      if token is not None and token.side == current_turn and token.hp < token.max_hp]
+            if allies:
+                print("Доступные союзники для лечения (если не выбрать, лечится маг):")
+                ally_options = [f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})" for cell, token in allies]
+                ally_choice = choose_option("Выберите союзника для лечения: ", ally_options)
+                target_cell = None
+                for cell, token in allies:
+                    option_str = f"{token.tclass} на клетке {cell} (H:{token.hp}/{token.max_hp})"
+                    if option_str == ally_choice:
+                        target_cell = cell
+                        break
+                if target_cell:
+                    print(f"{attacker.tclass} лечит союзника на клетке {target_cell} на 2 HP.")
+                    board[target_cell].hp = min(board[target_cell].hp + 2, board[target_cell].max_hp)
+                else:
+                    print("Союзник не выбран. Лечится маг.")
+                    attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            else:
+                print("Нет союзников, нуждающихся в лечении. Лечится маг.")
+                attacker.hp = min(attacker.hp + 2, attacker.max_hp)
+            attacker.cooldown = 5
+        else:
+            print("Хилл недоступен.")
+    if attacker.cooldown is not None and attacker.cooldown > 0:
+        attacker.cooldown -= 1
+
+# Новая функция меню для атаки лучника
+def archer_attack_menu(attacker, source_label, current_turn):
+    print("\nЛучник использует расширенную атаку (Огненный шар).")
+    extended_attack(attacker, source_label, current_turn)
+
+# Функция специального удара для рыцаря (2x damage)
+def knight_special_attack(attacker, defender, allow_counterattack=True):
+    special_attack_value = 2 * attacker.attack
+    raw_dmg = special_attack_value - defender.defense
+    if raw_dmg > 0:
+        dmg = raw_dmg
+        print(f"{attacker.tclass} (спец. удар) наносит {dmg} урона {defender.tclass} (щит пробит).")
+        defender.hp -= dmg
+        defender.defense = 0
+        if defender.hp <= 0:
+            print(f"{defender.tclass} побеждён!")
+            return "defender_dead"
+        if allow_counterattack:
+            counter = max(defender.attack - attacker.defense, 0)
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+    else:
+        special_dmg = special_attack_value // 2
+        print(f"{attacker.tclass} (спец. удар) пробивает щит {defender.tclass} и наносит {special_dmg} повреждений щиту.")
+        defender.defense -= special_dmg
+        if defender.defense < 0:
+            defender.defense = 0
+        if allow_counterattack:
+            counter = defender.attack // 2
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+
+# Функция специального отбрасывающего удара для солдата
+def soldier_knockback_attack(attacker, defender, attacker_cell, defender_cell):
+    print(f"{attacker.tclass} использует отбрасывающую атаку!")
+    board[attacker_cell] = None
+    damage = 2
+    defender.hp -= damage
+    print(f"{attacker.tclass} наносит 2 урона {defender.tclass}.")
+    if defender.hp <= 0:
+        print(f"{defender.tclass} побеждён!")
+        board[defender_cell] = attacker
+        attacker.knockback_cooldown = 7
+        return "defender_dead"
+    empty_neighbors = [nbr for nbr in neighbors_map.get(defender_cell, []) if board.get(nbr) is None]
+    if empty_neighbors:
+        new_cell = random.choice(empty_neighbors)
+        print(f"Враг отбит на клетку {new_cell}.")
+        board[new_cell] = defender
+        board[defender_cell] = None
+    else:
+        print("Нет свободной клетки для отбрасывания врага, враг остается на месте.")
+    board[defender_cell] = attacker
+    attacker.knockback_cooldown = 7
+    return "both_alive"
+
+# Функция ремонта щита для солдата (25% от max_defense)
+def repair_shield(token):
+    repair_amount = max(1, int(0.25 * token.max_defense))
+    new_def = min(token.defense + repair_amount, token.max_defense)
+    print(f"{token.tclass} ремонтирует щит: {token.defense} -> {new_def}.")
+    token.defense = new_def
+    token.shield_repair_cooldown = 6
+
+# Функция применения урона с учетом щита
+def apply_damage(target, damage):
+    if damage <= target.defense:
+        reduction = damage // 2
+        target.defense = max(target.defense - reduction, 0)
+        print(f"Щит {target.tclass} уменьшен на {reduction} (новый щит: {target.defense}).")
+    else:
+        remainder = damage - target.defense
+        print(f"Щит {target.tclass} пробит (щит: {target.defense}), остаток урона: {remainder}.")
+        target.defense = 0
+        target.hp -= remainder
+
+# Функция стандартного combat с учетом щита
+def combat(attacker, defender, allow_counterattack=True):
+    raw_dmg = attacker.attack - defender.defense
+    if raw_dmg > 0:
+        dmg = raw_dmg
+        print(f"{attacker.tclass} наносит {dmg} урона {defender.tclass} (щит пробит).")
+        defender.hp -= dmg
+        defender.defense = 0
+        if defender.hp <= 0:
+            print(f"{defender.tclass} побеждён!")
+            return "defender_dead"
+        if allow_counterattack:
+            counter = max(defender.attack - attacker.defense, 0)
+            print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+            apply_damage(attacker, counter)
+            if attacker.hp <= 0:
+                print(f"{attacker.tclass} побеждён в контратаке!")
+                return "attacker_dead"
+        return "both_alive"
+    special_dmg = attacker.attack // 2
+    print(f"{attacker.tclass} пробивает щит {defender.tclass} и наносит {special_dmg} повреждений щиту.")
+    defender.defense -= special_dmg
+    if defender.defense < 0:
+        defender.defense = 0
+    if allow_counterattack:
+        counter = defender.attack // 2
+        print(f"{defender.tclass} контратакует и пытается нанести {counter} урона {attacker.tclass}.")
+        apply_damage(attacker, counter)
+        if attacker.hp <= 0:
+            print(f"{attacker.tclass} побеждён в контратаке!")
+            return "attacker_dead"
+    return "both_alive"
+
+# Инициализация токенов
+board["3"] = Token('B', "Soldier", 10, 5, 4)
+board["4"] = Token('B', "Mage", 6, 6, 2)
+board["C"] = Token('B', "Knight", 5, 4, 8)
+board["2"] = Token('B', "Archer", 4, 7, 1)
+board["L"] = Token('R', "Soldier", 10, 5, 4)
+board["O"] = Token('R', "Mage", 6, 6, 2)
+board["K"] = Token('R', "Knight", 5, 4, 8)
+board["N"] = Token('R', "Archer", 4, 7, 1)
+
+# Функция получения доступных клеток для перемещения для токена
+def get_available_moves(cell_label, token):
+    empty_moves = [nbr for nbr in neighbors_map.get(cell_label, []) if board.get(nbr) is None]
+    enemy_moves = []
+    for nbr in neighbors_map.get(cell_label, []):
+        if board.get(nbr) is not None and board[nbr].side != token.side:
+            if token.tclass == "Soldier" and token.knockback_cooldown == 0:
+                enemy_moves.append(nbr)
+            else:
+                if can_kill(token, board[nbr]):
+                    enemy_moves.append(nbr)
+    return empty_moves + enemy_moves
+    
 # Обновление заморозки и cooldown'ов для солдат
 def update_cooldowns():
     for token in board.values():
@@ -757,7 +1221,7 @@ def main():
                     print("Вы выбрали Огненный шар.")
                     extended_attack(moving_token, destination, current_turn)
                 elif "Заморозка" in mage_choice:
-                    print("Вы выбрали Заморозку.")
+
                     targets = extended_targets(destination)
                     enemy_targets = [t for t in targets if board.get(t) is not None and board[t].side != current_turn]
                     if enemy_targets:
